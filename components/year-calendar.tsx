@@ -511,10 +511,38 @@ export function YearCalendar({
               ev: AllDayEvent;
             };
             const rowToSegs = new Map<number, Seg[]>();
+            const yearStartKey = formatDateKey(new Date(year, 0, 1));
+            const yearEndKey = formatDateKey(new Date(year, 11, 31));
+            const totalDaysInYear = days.filter((d) => d !== null).length;
             for (const ev of events) {
-              const startIdx = dayIndexByKey.get(ev.startDate);
-              const endIdxExclusive = dayIndexByKey.get(ev.endDate);
-              if (startIdx == null || endIdxExclusive == null) continue;
+              // Clamp event dates to year boundaries to handle cross-year events
+              // ev.endDate is exclusive (day after last day of event)
+              const clampedStartDate =
+                ev.startDate < yearStartKey ? yearStartKey : ev.startDate;
+              // If endDate is after the year, clamp to day after Dec 31 (which is Jan 1 of next year)
+              // Since we can't look up next year's date, we'll use totalDaysInYear as the exclusive end index
+              const clampedEndDate =
+                ev.endDate > yearEndKey ? null : ev.endDate;
+
+              // Check if event overlaps with this year at all
+              if (clampedStartDate > yearEndKey) continue; // Event starts after this year
+              if (clampedEndDate !== null && clampedEndDate <= yearStartKey)
+                continue; // Event ends before this year
+
+              const startIdx = dayIndexByKey.get(clampedStartDate);
+              if (startIdx == null) continue;
+
+              // For end index: if clampedEndDate is null, event extends past year end
+              // Otherwise, look up the exclusive end date
+              let endIdxExclusive: number | null;
+              if (clampedEndDate === null) {
+                // Event extends past Dec 31, so exclusive end is after the last day of the year
+                endIdxExclusive = totalDaysInYear;
+              } else {
+                endIdxExclusive = dayIndexByKey.get(clampedEndDate) ?? null;
+              }
+
+              if (endIdxExclusive == null) continue;
               let segStart = startIdx;
               while (segStart < endIdxExclusive) {
                 const row = Math.floor(segStart / cols);
